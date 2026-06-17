@@ -1,10 +1,10 @@
-# Marco 3 - Co-Processador ELM no DE1-SoC
+2# Marco 3 - Co-Processador ELM no DE1-SoC
 
 Aplicação unificada para o **co-processador ELM (Extreme Learning Machine)** implementado no FPGA da placa DE1-SoC (ARM + FPGA), com suporte a três modos de operação: inferência a partir de arquivo, desenho interativo com mouse e validação/benchmark sobre datasets.
 
 ---
 
-## 📋 Índice
+## Índice
 
 - [Visão Geral](#visão-geral)
 - [Pré-requisitos](#pré-requisitos)
@@ -19,7 +19,7 @@ Aplicação unificada para o **co-processador ELM (Extreme Learning Machine)** i
 
 ---
 
-## 🎯 Visão Geral
+## Visão Geral
 
 Este projeto implementa uma **aplicação de reconhecimento de dígitos (0-9)** usando a rede neural ELM, executando a inferência no co-processador FPGA do DE1-SoC para máxima performance. A aplicação oferece:
 
@@ -32,7 +32,7 @@ A aplicação foi desenvolvida em **C** com conversão de imagens integrada (usa
 
 ---
 
-## 🔧 Pré-requisitos
+## Pré-requisitos
 
 ### Hardware
 - Placa **Altera DE1-SoC** com FPGA e ARM HPS
@@ -55,7 +55,7 @@ Estes arquivos são fornecidos no repositório em `src/`.
 
 ---
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 Marco_3-CoProcessador_ELM-DE1-SoC/
@@ -81,7 +81,7 @@ Marco_3-CoProcessador_ELM-DE1-SoC/
 
 ---
 
-## 🔨 Compilação
+## Compilação
 
 ### Compilação Nativa (no ARM)
 ```bash
@@ -104,7 +104,7 @@ make CROSS=1 elm_app    # Apenas a aplicação
 
 ---
 
-## 🚀 Uso
+## Uso
 
 ### Execução Básica
 ```bash
@@ -262,7 +262,7 @@ Encerra a aplicação e libera o acesso a `/dev/mem`.
 
 ---
 
-## 📊 Arquivos de Entrada
+## Arquivos de Entrada
 
 ### Imagens
 - **Formato PNG/JPG/BMP:** Automaticamente convertidas para 28×28 pixels em escala de cinza, normalizadas para a faixa [0, 255]
@@ -287,7 +287,7 @@ Os pesos estão **quantizados em Q4.12** (ponto fixo de 16 bits com escala fixa 
 
 ---
 
-## 📈 Saída e Resultados
+## Saída e Resultados
 
 ### Modo 1 e 2: Resultado Individual
 - Dígito predito (0-9)
@@ -305,7 +305,7 @@ arquivo,label_esperado,digito_predito,acerto,latencia_us
 
 ---
 
-## 🏗️ Arquitetura e Implementação
+## Arquitetura e Implementação
 
 ### Módulos Principais
 
@@ -349,7 +349,7 @@ arquivo,label_esperado,digito_predito,acerto,latencia_us
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Erro: "Erro abrindo /dev/mem"
 **Causa:** Permissões insuficientes.
@@ -399,7 +399,7 @@ mkdir -p dataset/{0,1,2,3,4,5,6,7,8,9}
 
 ---
 
-## 📝 Notas Importantes
+## Notas Importantes
 
 1. **Quantização em Q4.12:** Todos os pesos são de 16 bits em ponto fixo Q4.12. A conversão é feita internamente pelo hardware.
 
@@ -413,7 +413,7 @@ mkdir -p dataset/{0,1,2,3,4,5,6,7,8,9}
 
 ---
 
-## 📞 Contato e Suporte
+## Contato e Suporte
 
 Para dúvidas ou problemas, consulte:
 - Especificação do projeto: `Problema-MI-SD-2026-1(V02).pdf`
