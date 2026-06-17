@@ -1,4 +1,4 @@
-2# Marco 3 - Co-Processador ELM no DE1-SoC
+# Marco 3 - Co-Processador ELM no DE1-SoC
 
 Aplicação unificada para o **co-processador ELM (Extreme Learning Machine)** implementado no FPGA da placa DE1-SoC (ARM + FPGA), com suporte a três modos de operação: inferência a partir de arquivo, desenho interativo com mouse e validação/benchmark sobre datasets.
 
