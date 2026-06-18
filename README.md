@@ -1,4 +1,4 @@
-# Marco 3 - Co-Processador ELM no DE1-SoC
+# Marco 3 — Co-Processador ELM no DE1-SoC
 
 Aplicação unificada para o **co-processador ELM (Extreme Learning Machine)** implementado no FPGA da placa DE1-SoC (ARM + FPGA), com suporte a três modos de operação: inferência a partir de arquivo, desenho interativo com mouse e validação/benchmark sobre datasets.
 
@@ -6,52 +6,96 @@ Aplicação unificada para o **co-processador ELM (Extreme Learning Machine)** i
 
 ## Índice
 
-- [Visão Geral](#visão-geral)
-- [Pré-requisitos](#pré-requisitos)
+- [Levantamento de Requisitos](#levantamento-de-requisitos)
+- [Especificação de Hardware](#especificação-de-hardware)
+- [Softwares e Versões](#softwares-e-versões)
 - [Estrutura do Projeto](#estrutura-do-projeto)
+- [Instalação e Configuração do Ambiente](#instalação-e-configuração-do-ambiente)
 - [Compilação](#compilação)
 - [Uso](#uso)
 - [Modos de Operação](#modos-de-operação)
-- [Arquivos de Entrada](#arquivos-de-entrada)
-- [Saída e Resultados](#saída-e-resultados)
-- [Arquitetura e Implementação](#arquitetura-e-implementação)
+- [Arquitetura Final](#arquitetura-final)
+- [Testes de Funcionamento](#testes-de-funcionamento)
+- [Resultados de Acurácia e Desempenho](#resultados-de-acurácia-e-desempenho)
+- [Análise dos Resultados e Gargalos](#análise-dos-resultados-e-gargalos)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Visão Geral
+## Levantamento de Requisitos
 
-Este projeto implementa uma **aplicação de reconhecimento de dígitos (0-9)** usando a rede neural ELM, executando a inferência no co-processador FPGA do DE1-SoC para máxima performance. A aplicação oferece:
+### Requisitos Funcionais
 
-- **Modo 1**: Classificação de imagens carregadas do disco (PNG, JPG, BMP, BIN)
-- **Modo 2**: Classificação de dígitos desenhados interativamente no VGA com mouse
-- **Modo 3**: Validação automática sobre datasets com cálculo de acurácia, latência e throughput
-- **Recarregamento de pesos**: Capacidade de recarregar pesos do hardware em tempo de execução
+| ID | Requisito |
+|----|-----------|
+| RF01 | A aplicação deve classificar imagens de dígitos (0–9) em escala de cinza 28×28 pixels usando o co-processador ELM no FPGA |
+| RF02 | Deve suportar imagens nos formatos PNG, JPG, BMP e BIN como entrada |
+| RF03 | Deve oferecer modo de inferência a partir de arquivo no disco |
+| RF04 | Deve oferecer modo de inferência a partir de dígito desenhado interativamente via mouse e exibido no VGA |
+| RF05 | Deve oferecer modo de validação/benchmark sobre dataset estruturado em subpastas 0..9 |
+| RF06 | O benchmark deve calcular acurácia (%), latência média, desvio padrão e throughput (img/s) |
+| RF07 | Os resultados do benchmark devem ser salvos em arquivo CSV |
+| RF08 | Os pesos da rede (W_in, b, β) devem ser carregados a partir de arquivos no formato MIF |
+| RF09 | A aplicação deve exibir a imagem inferida usando o IP-Core VGA |
+| RF10 | A comunicação com o co-processador deve ser feita via MMIO através do driver em Assembly |
 
-A aplicação foi desenvolvida em **C** com conversão de imagens integrada (usando `stb_image.h` — sem dependências externas de ImageMagick).
+### Requisitos Não-Funcionais
+
+| ID | Requisito |
+|----|-----------|
+| RNF01 | O driver de acesso ao hardware deve ser implementado em Assembly ARM |
+| RNF02 | A aplicação deve ser desenvolvida em linguagem C (C99) |
+| RNF03 | Os pesos devem ser representados em ponto fixo Q4.12 (16 bits) |
+| RNF04 | A imagem de entrada é de 784 bytes (28×28 pixels, 1 byte por pixel) |
+| RNF05 | A aplicação deve funcionar em Linux ARM rodando no HPS da DE1-SoC |
+| RNF06 | O acesso ao hardware exige privilégio root (acesso a `/dev/mem`) |
+
+### Restrições
+
+- Plataforma alvo: DE1-SoC (ARM Cortex-A9 + Cyclone V FPGA)
+- O modelo ELM (pesos) é fornecido pronto — não há treinamento
+- A conversão de imagens deve ser feita sem dependências externas (uso de `stb_image.h`)
 
 ---
 
-## Pré-requisitos
+## Especificação de Hardware
 
-### Hardware
-- Placa **Altera DE1-SoC** com FPGA e ARM HPS
-- Display VGA conectado
-- Mouse USB (opcional, pode ser informado em tempo de execução)
+| Componente | Especificação |
+|------------|---------------|
+| Placa | Altera/Intel DE1-SoC (P0150) |
+| FPGA | Cyclone V SE 5CSEMA5F31C6 |
+| HPS (CPU) | ARM Cortex-A9 dual-core, 800 MHz |
+| Memória RAM | 1 GB DDR3 |
+| Display | `[PREENCHER: ex. monitor VGA 1024×768 60 Hz — marca/modelo]` |
+| Mouse | `[PREENCHER: ex. mouse USB Logitech B100 — identificado como /dev/input/event0]` |
+| Cabo VGA | `[PREENCHER: se relevante]` |
 
-### Software (no ARM Linux)
-- **Toolchain ARM**: `arm-linux-gnueabihf-gcc` e `arm-linux-gnueabihf-as` (para compilação cruzada)
-- **Biblioteca matemática**: `libm` (geralmente pré-instalada)
-- **Biblioteca de tempo real**: `librt` (para `clock_gettime`)
-- **Acesso root**: `sudo` é necessário para acessar `/dev/mem` e `/dev/input/event*`
+> **Nota:** preencha com os dados exatos do equipamento usado nos testes para garantir reprodutibilidade.
 
-### Arquivos de Pesos
-O co-processador requer três arquivos em formato MIF (Memory Initialization File):
-- `W_in_q.mif` — Matriz de pesos de entrada (quantizada em Q4.12)
-- `b_q.mif` — Vetor de bias (quantizado em Q4.12)
-- `beta_q.mif` — Vetor de saída beta (quantizado em Q4.12)
+---
 
-Estes arquivos são fornecidos no repositório em `src/`.
+## Softwares e Versões
+
+### No host (compilação cruzada)
+
+| Software | Versão | Finalidade |
+|----------|--------|------------|
+| `arm-linux-gnueabihf-gcc` | `[PREENCHER: ex. 11.4.0]` | Compilação cruzada C |
+| `arm-linux-gnueabihf-as` | `[PREENCHER: ex. 2.38]` | Montagem Assembly ARM |
+| Quartus Prime | `[PREENCHER: ex. 21.1 Lite]` | Síntese do co-processador Verilog |
+| ModelSim / Questa | `[PREENCHER: ex. 2021.2]` | Simulação do RTL |
+| GNU Make | `[PREENCHER: ex. 4.3]` | Automação do build |
+| Ubuntu / Debian host | `[PREENCHER: ex. Ubuntu 22.04 LTS]` | Sistema operacional do host |
+
+### No target (DE1-SoC)
+
+| Software | Versão | Finalidade |
+|----------|--------|------------|
+| Linux kernel | `[PREENCHER: ex. 4.14.130-ltsi]` | SO do HPS |
+| `gcc` (nativo) | `[PREENCHER: se compilado nativamente]` | Compilação nativa (alternativa) |
+| `libc` (glibc) | `[PREENCHER: ex. 2.27]` | Biblioteca C padrão |
+| `libm` | (incluída na glibc) | Funções matemáticas (`sqrt`) |
+| `librt` | (incluída na glibc) | `clock_gettime` em kernels antigos |
 
 ---
 
@@ -59,368 +103,523 @@ Estes arquivos são fornecidos no repositório em `src/`.
 
 ```
 Marco_3-CoProcessador_ELM-DE1-SoC/
-├── README.md                    # Este arquivo
-├── Problema-MI-SD-2026-1(V02).pdf  # Especificação do projeto
-├── imagens/                     # Diretório para armazenar imagens (vazio)
+├── README.md                        # Este arquivo
+├── Problema-MI-SD-2026-1(V02).pdf   # Especificação do projeto
+├── imagens/                         # Imagens de teste
 └── src/
-    ├── Makefile                 # Script de compilação
-    ├── elm_app.c                # Aplicação principal unificada
-    ├── elm.c / elm.h            # API do co-processador
-    ├── elm_comum.c / elm_comum.h  # Funções comuns
-    ├── elm_driver.s             # Driver de baixo nível (assembly)
-    ├── conversor_img.c / conversor_img.h  # Conversão de imagens
-    ├── golden_test.c / golden_test.h      # Suite de testes (Marco 2)
-    ├── stb_image.h              # Biblioteca de carregamento de imagens (público)
-    ├── W_in_q.mif               # Pesos de entrada (~1.3 MB)
-    ├── b_q.mif                  # Bias (~1.5 KB)
-    ├── beta_q.mif               # Beta (~15 KB)
-    ├── benchmark.csv            # Resultados do último benchmark
-    ├── *.bin                    # Arquivos de teste (784 bytes cada)
-    └── *.png                    # Versões PNG dos testes
+    ├── Makefile                     # Script de build
+    ├── elm_app.c                    # Aplicação principal (menu + 3 modos)
+    ├── elm.c / elm.h                # API C do co-processador
+    ├── elm_comum.c / elm_comum.h    # Funções compartilhadas (MIF, BIN, polling)
+    ├── elm_driver.s                 # Driver de baixo nível em Assembly ARM
+    ├── conversor_img.c / conversor_img.h  # Pipeline de conversão de imagens
+    ├── stb_image.h                  # Decodificador PNG/JPG/BMP (domínio público)
+    ├── W_in_q.mif                   # Pesos de entrada (784×128, Q4.12)
+    ├── b_q.mif                      # Bias (128 valores, Q4.12)
+    ├── beta_q.mif                   # Beta/saída (10×128, Q4.12)
+    ├── benchmark.csv                # Resultados do último benchmark executado
+    └── *.bin / *.png                # Imagens de teste
+```
+
+---
+
+## Instalação e Configuração do Ambiente
+
+### 1. Configurar a toolchain de compilação cruzada (no host)
+
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
+
+# Verifique a instalação
+arm-linux-gnueabihf-gcc --version
+arm-linux-gnueabihf-as --version
+```
+
+### 2. Programar o FPGA com o co-processador ELM
+
+```bash
+# No Quartus, abra o projeto e compile:
+#   Processing > Start Compilation
+# Em seguida, programe a DE1-SoC via JTAG:
+#   Tools > Programmer > Start
+# [PREENCHER: caminho do arquivo .sof gerado]
+```
+
+> O FPGA **deve estar programado antes** de iniciar a aplicação. Sem a programação correta, `elm_init()` mapeia a região de memória errada e todas as operações produzem resultados inválidos.
+
+### 3. Transferir os arquivos para a placa
+
+```bash
+# Via SCP (substitua pelo IP real da placa)
+scp -r src/ root@<IP_DA_PLACA>:/home/root/elm_app/
+
+# Ou via cartão SD / pendrive, copiando para /home/root/elm_app/
+```
+
+### 4. Verificar o dispositivo do mouse (na DE1-SoC)
+
+```bash
+# Liste os dispositivos de entrada disponíveis
+ls -la /dev/input/
+
+# Identifique qual é o mouse (normalmente event0 ou event1)
+cat /proc/bus/input/devices | grep -A5 "Mouse"
+```
+
+### 5. Verificar permissões de `/dev/mem`
+
+```bash
+# A aplicação exige root para acessar /dev/mem
+# Confirme que sudo está disponível ou execute como root:
+sudo -l
 ```
 
 ---
 
 ## Compilação
 
-### Compilação Nativa (no ARM)
+### Compilação cruzada (no host x86_64, recomendado)
+
 ```bash
 cd src
-make                    # Compila elm_app e golden_test
-make elm_app            # Apenas a aplicação unificada
-make clean              # Remove binários e objetos
+make CROSS=1        # gera elm_app e golden_test para ARM
 ```
 
-### Compilação Cruzada (no host x86_64)
+### Compilação nativa (diretamente na DE1-SoC)
+
 ```bash
 cd src
-make CROSS=1            # Usa arm-linux-gnueabihf-gcc
-make CROSS=1 elm_app    # Apenas a aplicação
+make                # usa o gcc local do ARM Linux
 ```
 
-### Flags de Compilação
-- **CFLAGS**: `-Wall -Wextra -O0 -g -std=gnu99` (debug; mude para `-O2` para otimização)
-- **LDFLAGS**: `-lm -lrt` (matemática e relógio do sistema)
+### Alvos disponíveis
+
+```bash
+make                  # compila tudo (elm_app + golden_test)
+make elm_app          # apenas a aplicação unificada
+make clean            # remove binários e arquivos objeto
+make CROSS=1          # força compilação cruzada
+```
+
+### Flags de compilação
+
+| Flag | Valor | Observação |
+|------|-------|------------|
+| `-std` | `gnu99` | C99 com extensões GNU |
+| `-O0` | (debug) | Troque por `-O2` para medir desempenho real |
+| `-Wall -Wextra` | ativados | Todos os warnings habilitados |
+| `-lm` | linkado | Biblioteca matemática (`sqrt`) |
+| `-lrt` | linkado | Relógio de alta resolução (`clock_gettime`) |
+
+> **Atenção:** os benchmarks deste documento foram coletados com `-O0`. Com `-O2`, o overhead do HPS diminui, mas o gargalo principal (tempo de processamento no FPGA) permanece igual.
 
 ---
 
 ## Uso
 
-### Execução Básica
 ```bash
 cd src
-sudo ./elm_app W_in_q.mif b_q.mif beta_q.mif [/dev/input/eventX]
+sudo ./elm_app <W_in.mif> <b.mif> <beta.mif> [/dev/input/eventX]
 ```
 
-**Argumentos obrigatórios:**
-- `W_in_q.mif` — Arquivo de pesos de entrada
-- `b_q.mif` — Arquivo de bias
-- `beta_q.mif` — Arquivo de beta (vetor de saída)
+**Argumentos:**
 
-**Argumento opcional:**
-- `/dev/input/eventX` — Dispositivo do mouse (ex.: `/dev/input/event0`)
-  - Se omitido, será solicitado ao entrar no **Modo 2 (desenho)**
+| Argumento | Obrigatório | Descrição |
+|-----------|-------------|-----------|
+| `W_in.mif` | Sim | Pesos da camada de entrada (784×128) |
+| `b.mif` | Sim | Bias da camada oculta (128 valores) |
+| `beta.mif` | Sim | Pesos da camada de saída (10×128) |
+| `/dev/input/eventX` | Não | Dispositivo do mouse (solicitado no Modo 2 se omitido) |
 
-### Exemplo Completo
+**Exemplo:**
+
 ```bash
-cd /home/user/Marco_3-CoProcessador_ELM-DE1-SoC/src
 sudo ./elm_app W_in_q.mif b_q.mif beta_q.mif /dev/input/event0
 ```
 
 ---
 
-## 🎮 Modos de Operação
+## Modos de Operação
 
-Ao iniciar, a aplicação exibe um **menu interativo** com 5 opções:
+Ao iniciar, a aplicação carrega os pesos no hardware e exibe um menu com 4 opções:
 
-### **Modo 1: Inferência a partir de Arquivo**
-**Descrição:** Carrega uma imagem do disco e a classifica.
-
-**Formatos suportados:**
-- `.png`, `.jpg`, `.jpeg`, `.bmp` — Convertidos automaticamente para MNIST (784B, 28×28 pixels)
-- `.bin` — Arquivo raw de 784 bytes (usado diretamente)
-
-**Processo:**
-1. Escolha a opção `1` no menu
-2. Informe o caminho da imagem
-3. A aplicação:
-   - Carrega e redimensiona a imagem (se necessário)
-   - Converte para escala de cinza e normaliza para MNIST
-   - Salva a versão `.bin` ao lado do arquivo original (se convertida)
-   - Dispara a inferência no co-processador
-   - Exibe o dígito predito e latência
-
-**Saída esperada:**
-```
-==================================
->>> DÍGITO CLASSIFICADO: 5 <<<
-    (latência: 245 us)
-==================================
-```
-
----
-
-### **Modo 2: Inferência por Desenho (VGA + Mouse)**
-**Descrição:** Desenha um dígito na tela e o classifica em tempo real.
-
-**Interface de desenho:**
-- **Canvas:** Caixa 224×224 pixels (downsampled para 28×28 no MNIST)
-- **Cores:**
-  - Fundo: preto
-  - Traço: branco
-  - Moldura: azul
-  - Cursor (crosshair): vermelho
-
-**Controles:**
-| Ação | Resultado |
-|------|-----------|
-| Botão esquerdo + movimento | Desenhar |
-| Botão direito | Limpar a tela |
-| Botão do meio | Classificar o dígito |
-| **ENTER** (no terminal) | Voltar ao menu |
-
-**Processo:**
-1. Escolha a opção `2` no menu
-2. Informe o dispositivo do mouse (ou use o argumento CLI)
-3. A tela VGA é inicializada e limpa
-4. Desenhe um dígito com o botão esquerdo do mouse
-5. Clique com o botão do meio para classificar
-6. Veja o resultado no terminal
-7. Pressione **ENTER** no terminal para sair
-
----
-
-### **Modo 3: Validação / Benchmark**
-**Descrição:** Valida a rede neural contra um dataset estruturado.
-
-**Estrutura esperada do dataset:**
-```
-<pasta_raiz>/
-├── 0/
-│   ├── img1.bin
-│   ├── img2.bin
-│   └── ...
-├── 1/
-│   ├── img1.bin
-│   └── ...
-├── ...
-└── 9/
-    ├── imgN.bin
-    └── ...
-```
-
-**Processo:**
-1. Escolha a opção `3` no menu
-2. Informe o caminho da pasta raiz
-3. A aplicação:
-   - Varre as subpastas 0..9 recursivamente
-   - Conta quantas imagens `.bin` em cada classe
-   - Processa todas as imagens e coleta estatísticas
-   - Exibe relatório de acurácia por classe
-   - Salva resultados detalhados em `benchmark.csv`
-
-**Saída esperada:**
 ```
 ╔══════════════════════════════════════════════╗
-║          RESULTADOS DO BENCHMARK             ║
+║        APLICAÇÃO UNIFICADA - ELM             ║
 ╠══════════════════════════════════════════════╣
-║  Imagens processadas :   1000               ║
-║  Acertos             :    972               ║
-║  Acurácia            :  97.20 %             ║
-╠══════════════════════════════════════════════╣
-║  Latência média      :   245.3 us          ║
-║  Desvio padrão       :    12.4 us          ║
-║  Latência mínima     :    235 us            ║
-║  Latência máxima     :    289 us            ║
-║  Throughput          : 4081.63 img/s        ║
-╠══════════════════════════════════════════════╣
-║  Acurácia por classe:                        ║
-║    Dígito 0 :  100/ 100  (100.00 %)        ║
-║    Dígito 1 :   98/ 100  ( 98.00 %)        ║
-│ ...                                          │
-║  Dígito 9 :  95/ 100  ( 95.00 %)         ║
+║  1. Inferência a partir de arquivo de imagem ║
+║  2. Inferência por desenho na tela (mouse)   ║
+║  3. Validação / benchmark (dataset)          ║
+║  4. Recarregar pesos no hardware             ║
+║  0. Sair                                     ║
 ╚══════════════════════════════════════════════╝
-
-[elm_app] Resultados individuais salvos em 'benchmark.csv'.
 ```
 
 ---
 
-### **Modo 4: Recarregar Pesos**
-**Descrição:** Recarrega os pesos do hardware sem sair da aplicação.
+### Modo 1 — Inferência a partir de arquivo
 
-**Uso:**
-1. Escolha a opção `4` no menu
-2. A aplicação recarrega os três arquivos de pesos no co-processador
-3. Informe se a operação foi bem-sucedida ou se houve erro
-4. Volta ao menu
+Carrega uma imagem do disco, converte para o formato MNIST (28×28, escala de cinza) e classifica.
 
----
+**Formatos aceitos:**
 
-### **Modo 0: Sair**
-Encerra a aplicação e libera o acesso a `/dev/mem`.
+| Formato | Processamento |
+|---------|---------------|
+| `.bin` | Lido diretamente (784 bytes raw, sem conversão) |
+| `.png`, `.jpg`, `.bmp` | Decodificado, convertido para cinza, redimensionado para 28×28, centralizado |
 
----
+**Pipeline de conversão (para PNG/JPG/BMP):**
+1. Decodificação via `stb_image.h` (forçado para 1 canal — escala de cinza)
+2. Detecção de fundo claro (média dos pixels da borda) — inverte se necessário para o padrão MNIST (traço claro, fundo escuro)
+3. Localização da bounding box do dígito (pixels acima do limiar de 50)
+4. Redimensionamento da bounding box para 20×20 (filtro de média de área, preserva proporção)
+5. Centralização em moldura 28×28
 
-## Arquivos de Entrada
-
-### Imagens
-- **Formato PNG/JPG/BMP:** Automaticamente convertidas para 28×28 pixels em escala de cinza, normalizadas para a faixa [0, 255]
-- **Formato BIN:** Raw 784 bytes (28×28), esperado em [0, 255], sem cabeçalho
-- **Exceção:** O Modo 2 captura desenhos e os converte automaticamente
-
-### Pesos (MIF)
-Arquivos de inicialização de memória com formato hexadecimal:
+**Saída:**
 ```
-WIDTH=16;
-DEPTH=1024;
-ADDRESS_RADIX=HEX;
-DATA_RADIX=HEX;
-CONTENT
-0 : 1A2B;
-1 : 3C4D;
+>>> DÍGITO CLASSIFICADO: 5 <<<
+    (latência: 16800 us)
+```
+
+A imagem convertida é salva automaticamente como `.bin` ao lado do arquivo original, para reutilização no benchmark.
+
+---
+
+### Modo 2 — Inferência por desenho (VGA + mouse)
+
+Exibe um canvas 224×224 no display VGA e permite desenhar um dígito com o mouse para classificação.
+
+**Controles:**
+
+| Ação | Efeito |
+|------|--------|
+| Botão esquerdo + movimento | Desenhar traço (pincel 4px de raio) |
+| Botão direito | Limpar a tela |
+| Botão do meio | Classificar o dígito atual |
+| ENTER (no terminal) | Voltar ao menu |
+
+**Mapeamento visual → MNIST:** o canvas 224×224 é dividido em blocos 8×8. Cada bloco vira um pixel 28×28: `255` se tiver ≥ 3 pixels brancos, `0` caso contrário.
+
+---
+
+### Modo 3 — Validação / Benchmark
+
+Processa um dataset estruturado em subpastas e calcula métricas de acurácia e desempenho.
+
+**Estrutura esperada:**
+```
+dataset/
+├── 0/  *.bin
+├── 1/  *.bin
 ...
-END;
+└── 9/  *.bin
 ```
 
-Os pesos estão **quantizados em Q4.12** (ponto fixo de 16 bits com escala fixa de 2^-12).
+**Métricas calculadas:**
+- Acurácia geral (%) e por dígito
+- Latência média, desvio padrão, mínima e máxima (µs)
+- Throughput (imagens/segundo)
+
+**Saída:** relatório no terminal + arquivo `benchmark.csv` com resultado por imagem.
 
 ---
 
-## Saída e Resultados
+### Modo 4 — Recarregar pesos
 
-### Modo 1 e 2: Resultado Individual
-- Dígito predito (0-9)
-- Latência em microsegundos
+Reenvia W_in, b e β ao co-processador sem reiniciar a aplicação. Útil após reset inesperado do FPGA.
 
-### Modo 3: Arquivo CSV
-Arquivo `benchmark.csv` com coluna-delimitada:
-```csv
-arquivo,label_esperado,digito_predito,acerto,latencia_us
-/data/0/img1.bin,0,0,1,243
-/data/0/img2.bin,0,0,1,251
-/data/1/img1.bin,1,1,1,238
-...
+---
+
+## Arquitetura Final
+
+### Visão geral do sistema
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        DE1-SoC                          │
+│                                                         │
+│  ┌──────────────── HPS (ARM Cortex-A9) ───────────────┐ │
+│  │                                                     │ │
+│  │  elm_app.c (aplicação C)                           │ │
+│  │    ├── Modo 1: arquivo → inferência                │ │
+│  │    ├── Modo 2: VGA + mouse → inferência            │ │
+│  │    └── Modo 3: dataset → benchmark                 │ │
+│  │         │                                          │ │
+│  │  elm.h / elm.c (API C)                             │ │
+│  │    ├── elm_init()    ──► open(/dev/mem) + mmap()   │ │
+│  │    ├── elm_carregar_imagem()                       │ │
+│  │    ├── elm_disparar_inferencia()                   │ │
+│  │    └── elm_obter_resultado() ◄── polling STATUS    │ │
+│  │         │                                          │ │
+│  │  elm_driver.s (Assembly ARM)                       │ │
+│  │    ├── elm_init_asm()   → SYS_OPEN + SYS_MMAP2    │ │
+│  │    ├── elm_close_asm()  → SYS_MUNMAP + SYS_CLOSE  │ │
+│  │    └── processar_hardware_asm() → R/W nos PIOs     │ │
+│  │         │                                          │ │
+│  └─────────┼────────────────────────────────────────── │
+│            │  Lightweight HPS-to-FPGA Bridge           │
+│            │  Base: 0xFF200000  Span: 0x200000         │
+│            │                                           │
+│  ┌─────────▼──────────── FPGA ────────────────────── ┐ │
+│  │                                                    │ │
+│  │  PIOs de interface (offsets do base):              │ │
+│  │    PIO_DATA_IN   @ +0x30  ← instrução + dados     │ │
+│  │    PIO_DATA_OUT  @ +0x40  → status + resultado     │ │
+│  │    PIO_SIGNALS   @ +0x50  ← pulsos de controle    │ │
+│  │                                                    │ │
+│  │  Co-processador ELM                                │ │
+│  │    ├── FSM de controle                             │ │
+│  │    ├── Datapath MAC (Q4.12)                        │ │
+│  │    ├── Memórias: img (784B), W_in, b, β            │ │
+│  │    ├── Ativação aproximada (tanh)                  │ │
+│  │    └── Argmax → predição [0..9]                    │ │
+│  │                                                    │ │
+│  │  IP-Core VGA                                       │ │
+│  │    Base: 0xFF200000 + 0x10 (signals)               │ │
+│  │           0xFF200000 + 0x20 (data)                 │ │
+│  └────────────────────────────────────────────────── ┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Protocolo de comunicação HPS → FPGA
+
+Cada operação segue um handshake de três fases via `processar_hardware_asm()`:
+
+1. **Escreve** os dados + opcode em `PIO_DATA_IN`
+2. **Pulsa** `PIO_SIGNALS` bit 0 (`pulse_hw`) — sinaliza dado válido ao FPGA
+3. **Pulsa** `PIO_SIGNALS` bit 1 (`clear_hw`) — limpa o sinal após confirmação
+
+Para leitura de status, basta ler `PIO_DATA_OUT` sem pulso.
+
+### Mapa de registradores (PIO_SIGNALS)
+
+| Bit | Nome | Ação |
+|-----|------|------|
+| 0 | `write_en` | Pulso: indica dado válido em DATA_IN |
+| 1 | `clr_operation` | Pulso: limpa flags DONE/ERROR |
+| 2 | `reset` | Pulso: reinicia a FSM do co-processador |
+
+### Sequência de inferência (workaround do bug de 1ª execução)
+
+O hardware apresenta comportamento conhecido: a primeira inferência após reset retorna DONE instantaneamente com resultado inválido. A solução adotada é:
+
+```
+elm_limpar_hardware()         ← limpa flags DONE/ERROR pendentes
+elm_resetar_hardware()        ← reinicia a FSM
+elm_carregar_imagem(img)      ← inferência "fantasma" (resultado descartado)
+elm_disparar_inferencia()
+usleep(20000)                 ← aguarda 20 ms o hardware "engasgar"
+elm_carregar_imagem(img)      ← inferência real
+elm_disparar_inferencia()
+aguardar_resultado()          ← polling até DONE/ERROR/timeout (500 ms)
+```
+
+Este `usleep(20000)` é o **principal determinante da latência** observada (~16,8 ms por chamada).
+
+### Formato de ponto fixo Q4.12
+
+Todos os pesos são armazenados em Q4.12: inteiro com sinal de 16 bits onde os 4 bits mais significativos representam a parte inteira e os 12 bits menos significativos a parte fracionária. Fator de escala: `valor_real = valor_int16 / 4096`.
+
+---
+
+## Testes de Funcionamento
+
+### Teste de estabilidade (requisito do Marco 2, mantido no Marco 3)
+
+Verifica que a mesma imagem produz o mesmo resultado em execuções consecutivas:
+
+```bash
+# Classifica a mesma imagem 10 vezes e verifica consistência
+for i in $(seq 1 10); do
+    sudo ./elm_app W_in_q.mif b_q.mif beta_q.mif <<EOF
+1
+quatro.bin
+
+0
+EOF
+done
+```
+
+> Resultado esperado: o mesmo dígito em todas as 10 execuções. Qualquer variação indica instabilidade na FSM ou no protocolo de handshake.
+
+### Teste de sanidade do Modo 1
+
+```bash
+# Classifica uma imagem conhecida e verifica o resultado
+sudo ./elm_app W_in_q.mif b_q.mif beta_q.mif <<EOF
+1
+quatro.bin
+
+0
+EOF
+# Resultado esperado: >>> DÍGITO CLASSIFICADO: 4 <<<
+```
+
+### Teste do Modo 3 — Benchmark completo
+
+```bash
+# Estrutura mínima para teste:
+mkdir -p dataset_teste/{0,1,2,3,4,5,6,7,8,9}
+# [copie imagens .bin para cada subpasta]
+
+sudo ./elm_app W_in_q.mif b_q.mif beta_q.mif <<EOF
+3
+dataset_teste
+
+0
+EOF
+
+# O arquivo benchmark.csv é gerado automaticamente
+cat benchmark.csv
+```
+
+### Verificação do CSV gerado
+
+```bash
+# Conta acertos e verifica formato
+python3 -c "
+import csv
+with open('benchmark.csv') as f:
+    rows = list(csv.DictReader(f))
+acertos = sum(int(r['acerto']) for r in rows)
+print(f'Total: {len(rows)}, Acertos: {acertos}, Acurácia: {100*acertos/len(rows):.1f}%')
+"
+```
+
+### Teste do Modo 2 — VGA + mouse
+
+```bash
+sudo ./elm_app W_in_q.mif b_q.mif beta_q.mif /dev/input/event0
+# Selecione opção 2, desenhe um dígito, clique com o botão do meio
+# Verifique o resultado no terminal
+# Pressione ENTER para voltar ao menu
 ```
 
 ---
 
-## Arquitetura e Implementação
+## Resultados de Acurácia e Desempenho
 
-### Módulos Principais
+> Os resultados abaixo foram obtidos com o dataset de validação disponível no repositório (150 imagens, 15 por dígito), compilado com `-O0`, na DE1-SoC com o FPGA programado com o co-processador ELM do Marco 1.
 
-#### `elm.h / elm.c`
-**API estável do co-processador**
-- `elm_init()` — Abre `/dev/mem` e mapeia o registrador HPS-to-FPGA
-- `elm_carregar_imagem()` — Carrega 784 bytes de imagem
-- `elm_carregar_pesos_raw()`, `elm_carregar_bias_raw()`, `elm_carregar_beta_raw()` — Carregam pesos
-- `elm_disparar_inferencia()` — Pulsa o sinal de início
-- `elm_obter_resultado()` — Poll com timeout para ler o resultado
-- `elm_resetar_hardware()` — Reset do co-processador
-- `elm_close()` — Libera `/dev/mem`
+### Acurácia geral
 
-#### `elm_comum.h / elm_comum.c`
-**Funções de suporte compartilhadas**
-- Carregamento de arquivos MIF
-- Carregamento de imagens BIN
-- Conversão de imagens (integrada com `stb_image.h`)
-- Impressão de preview ASCII de imagens
-- Funções auxiliares
+| Métrica | Valor |
+|---------|-------|
+| Imagens processadas | 150 |
+| Acertos | 120 |
+| **Acurácia geral** | **80,00%** |
 
-#### `conversor_img.h / conversor_img.c`
-**Pipeline de conversão de imagens**
-- Suporte PNG, JPG, BMP via `stb_image.h`
-- Redimensionamento para 28×28
-- Normalização para [0, 255]
-- Salva versões BIN para reutilização
+### Acurácia por dígito
 
-#### `elm_driver.s`
-**Driver de baixo nível em assembly ARM**
-- Manipulação de registradores do co-processador FPGA
-- Acesso à memória compartilhada HPS-FPGA
+| Dígito | Acertos | Total | Acurácia |
+|--------|---------|-------|----------|
+| 0 | 15 | 15 | 100,0% |
+| 1 | 15 | 15 | 100,0% |
+| 2 | 10 | 15 | 66,7% |
+| 3 | 11 | 15 | 73,3% |
+| 4 | 14 | 15 | 93,3% |
+| 5 | 9 | 15 | 60,0% |
+| 6 | 12 | 15 | 80,0% |
+| 7 | 13 | 15 | 86,7% |
+| 8 | 11 | 15 | 73,3% |
+| 9 | 10 | 15 | 66,7% |
 
-#### `elm_app.c`
-**Aplicação principal** (~27 KB)
-- Menu interativo (SEÇÃO 4)
-- Modo arquivo (SEÇÃO 2)
-- Modo desenho VGA+mouse (SEÇÃO 1)
-- Modo benchmark (SEÇÃO 3)
-- Inicialização e limpeza
+### Desempenho
+
+| Métrica | Valor |
+|---------|-------|
+| Latência média | 16.778,9 µs (~16,8 ms) |
+| Desvio padrão | 45,8 µs |
+| Latência mínima | 16.739 µs |
+| Latência máxima | 17.282 µs |
+| **Throughput** | **59,6 imagens/s** |
+
+> **Nota sobre reprodutibilidade:** para comparar com estes números, use o mesmo conjunto de 150 imagens `.bin` do repositório e o mesmo arquivo `.sof` do FPGA. Versões diferentes do co-processador Verilog podem produzir latências e acurácias distintas.
+
+---
+
+## Análise dos Resultados e Gargalos
+
+### Latência: o gargalo principal é o workaround da inferência fantasma
+
+A latência medida de ~16,8 ms **não representa o tempo de computação da ELM no FPGA**. O principal determinante é o `usleep(20000)` (20 ms de espera fixa) inserido na sequência de inferência para contornar o bug da primeira execução após reset:
+
+```c
+// elm_comum.c — inferir_digito()
+elm_carregar_imagem((uint8_t *)img);
+elm_disparar_inferencia();
+usleep(20000);   // ← este sleep domina a latência total
+elm_carregar_imagem((uint8_t *)img);
+elm_disparar_inferencia();
+```
+
+O desvio padrão baixo (45,8 µs sobre uma média de 16.778 µs, ou ~0,3%) confirma que a latência é quase constante — determinada pelo sleep fixo, e não por variações de carga computacional.
+
+**Melhoria possível:** corrigir o bug no RTL Verilog que causa o DONE espúrio na primeira inferência eliminaria a necessidade da inferência fantasma e do sleep, reduzindo a latência potencialmente para a faixa de centenas de microssegundos e aumentando o throughput de ~60 para `[PREENCHER: valor esperado após correção]` img/s.
+
+### Acurácia: dígitos problemáticos são 5, 2, 9 e 3
+
+Os dígitos com pior desempenho foram 5 (60,0%), 2 (66,7%), 9 (66,7%) e 3 (73,3%). Possíveis causas:
+
+- **Confusão morfológica:** dígitos 5 e 6, 3 e 8, 2 e 7 compartilham curvaturas semelhantes no espaço de características da ELM com ativação tanh.
+- **Dataset de teste pequeno (15 imagens/dígito):** a variância amostral é alta. Um dígito errado representa já 6,7% de queda de acurácia na classe.
+- **Quantização Q4.12:** a representação de 16 bits pode introduzir erros de arredondamento que afetam mais as classes com margens de decisão menores.
+
+`[PREENCHER: se disponível, inspecionar quais imagens específicas do dígito 5 foram erradas e descrever o padrão de confusão — ex.: "o modelo confundiu 5 com 6 em X dos Y erros"]`
+
+### Acurácia: dígitos 0 e 1 com 100%
+
+Os dígitos 0 e 1 atingiram 100% de acurácia, o que é esperado pela separabilidade elevada dessas classes no espaço de entrada (morfologia muito distinta dos demais dígitos).
+
+### Dataset de validação limitado
+
+O benchmark foi executado sobre 150 imagens (15 por dígito). Isso é suficiente para validação funcional, mas insuficiente para estimar a acurácia real do modelo com confiança estatística. Um dataset de 1.000 imagens (100 por dígito) daria intervalos de confiança mais estreitos.
+
+`[PREENCHER: se o benchmark foi rodado sobre um dataset maior, substitua os dados da tabela acima pelos valores reais]`
+
+### Throughput: 59,6 img/s vs. capacidade do hardware
+
+O throughput de 59,6 img/s é limitado artificialmente pelo `usleep(20000)`. O hardware em si processa cada inferência em `[PREENCHER: tempo real de processamento do FPGA, observável pelo tempo entre disparo e DONE sem o sleep]` µs. Sem o workaround, o throughput teórico seria de `[PREENCHER]` img/s.
+
+### Compilação com `-O0`
+
+Os benchmarks foram coletados com `-O0` (sem otimizações de compilador). Isso aumenta levemente o overhead do HPS (loops de carga dos pesos, handshake Assembly), mas não afeta significativamente a latência total já dominada pelo sleep de 20 ms.
 
 ---
 
 ## Troubleshooting
 
 ### Erro: "Erro abrindo /dev/mem"
-**Causa:** Permissões insuficientes.
-**Solução:** Use `sudo`:
-```bash
-sudo ./elm_app W_in_q.mif b_q.mif beta_q.mif
-```
+Execute com `sudo`. O driver requer acesso a `/dev/mem` para o mmap da região HPS-to-FPGA.
+
+### Erro: "mmap do VGA falhou"
+Verifique se o IP-Core VGA está mapeado no endereço esperado (`0xFF200000`). Recompile o projeto Quartus se o mapa de endereços foi alterado.
 
 ### Erro: "Erro abrindo /dev/input/eventX"
-**Causa:** Dispositivo do mouse inválido ou sem permissão.
-**Solução:**
-1. Verifique o dispositivo correto:
-   ```bash
-   ls -la /dev/input/
-   ```
-2. Use `sudo` ao executar
-3. Ou informe o dispositivo correto na linha de comando
-
-### Erro: "Arquivo não encontrado"
-**Causa:** Caminho absoluto ou relativo incorreto.
-**Solução:**
-1. Use caminhos absolutos (ex.: `/home/user/imagens/digit.png`)
-2. Ou navegue até o diretório correto antes de executar
-
-### Timeout na Inferência
-**Causa:** Co-processador não respondendo.
-**Solução:**
-1. Verifique se o FPGA foi programado corretamente
-2. Recarregue os pesos (Modo 4)
-3. Reinicie a aplicação
-
-### Imagem Não é Carregada
-**Causa:** Formato não suportado ou arquivo corrompido.
-**Solução:**
-1. Converta para PNG/JPG/BMP ou BIN manualmente
-2. Valide que a imagem tem 28×28 e está em escala de cinza
-3. Para BIN, verifique que tem exatamente 784 bytes
-
-### Benchmark Não Encontra Imagens
-**Causa:** Estrutura de pastas incorreta.
-**Solução:**
 ```bash
-# Crie a estrutura esperada:
-mkdir -p dataset/{0,1,2,3,4,5,6,7,8,9}
-# Coloque imagens .bin em cada subpasta
+ls -la /dev/input/
+cat /proc/bus/input/devices | grep -A5 "Mouse"
+```
+Use o dispositivo correto e execute com `sudo`.
+
+### Timeout na inferência (STATUS nunca sobe DONE)
+1. Verifique se o FPGA está programado com o `.sof` correto
+2. Execute o Modo 4 (recarregar pesos) — o co-processador pode estar em estado inválido
+3. Reinicie a aplicação para executar `elm_init()` novamente
+
+### Benchmark não encontra imagens
+```bash
+# Verifique a estrutura:
+find dataset/ -name "*.bin" | head -20
+# Esperado: dataset/0/img.bin, dataset/1/img.bin, ...
 ```
 
----
-
-## Notas Importantes
-
-1. **Quantização em Q4.12:** Todos os pesos são de 16 bits em ponto fixo Q4.12. A conversão é feita internamente pelo hardware.
-
-2. **Normalização de Imagens:** Imagens carregadas são normalizadas para [0, 255] (8 bits unsigned).
-
-3. **Latência Típica:** ~240-280 microsegundos por inferência (compilado com `-O0`; use `-O2` para benchmark).
-
-4. **Taxa de Transferência:** ~4000-5000 imagens/segundo (dependendo do hardware).
-
-5. **Memory-mapped I/O:** O co-processador é acessado via registradores de memória compartilhada HPS-FPGA, não há overhead de syscalls após `elm_init()`.
+### Resultado sempre igual (suspeita de DONE espúrio)
+Se o co-processador retorna DONE antes do processamento real, a inferência fantasma não foi suficiente para "limpar" o estado. Aumente o `usleep` em `elm_comum.c` ou corrija o bug no RTL.
 
 ---
 
-## Contato e Suporte
-
-Para dúvidas ou problemas, consulte:
-- Especificação do projeto: `Problema-MI-SD-2026-1(V02).pdf`
-- Código-fonte comentado em `src/*.c` e `src/*.h`
-- Documentação da placa DE1-SoC (Altera/Intel)
-
----
-
-**Última atualização:** 2026-06-17  
+**Última atualização:** 2026-06-18
 **Versão:** Marco 3 (Aplicação Unificada)
